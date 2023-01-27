@@ -1,4 +1,6 @@
 flask
 psycopg2-binary
 flask-sqlalchemy
-flask-marshmallow
+python-dotenv
+openai
+aioflask
