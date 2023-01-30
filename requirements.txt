@@ -4,3 +4,5 @@ flask-sqlalchemy
 python-dotenv
 openai
 aioflask
+gtts
+python-telegram-bot
