@@ -6,7 +6,15 @@ _local = threading.local()
 
 
 @contextmanager
-def acquire(*lock_state_state):
+def acquire(*lock_state_state) -> None:
+    """
+    Lock Objects has two states 'locked' and 'unlocked'.
+    It has 2 basic methods acquire() and release().
+    acquire use for unlocked state and change the locked state
+    release use for locked state and change to unlocked state
+    :param lock_state_state:
+    :return: None
+    """
     # Object identifier to sort the lock
     lock_state_state = sorted(lock_state_state, key=lambda a: id(a))
 
