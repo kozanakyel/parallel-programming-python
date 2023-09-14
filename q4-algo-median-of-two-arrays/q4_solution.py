@@ -7,27 +7,28 @@ def merge(A: List, B: List) -> []:
     m = len(A)
     n = len(B)
     
-    result = [None]*(m+n)
+    merged = [None]*(m+n)
     
     while i < m and j < n:
         if A[i] <= B[j]:
-            result[k] = A[i]
+            merged[k] = A[i]
             i += 1
         else:
-            result[k] = B[j]
+            merged[k] = B[j]
             j += 1
         k += 1
         
-    if i < m:
-        for p in range(i, m):
-            result[k] = A[p]
-            k += 1
-    else:
-        for p in range(j, n):
-            result[k] = B[p]
-            k += 1            
+    while i < m:
+        merged[k] = A[i]
+        i += 1
+        k += 1
+
+    while j < n:
+        merged[k] = B[j]
+        j += 1
+        k += 1           
     
-    return result
+    return merged
 
 def find_median(arr: List):
     total_length = len(arr)
