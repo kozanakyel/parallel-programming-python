@@ -43,8 +43,6 @@ class Config:
     TOP = 5
 
 
-
-
 class FileReader(abc.ABC):
     @abc.abstractmethod
     def create_list(self):
@@ -84,9 +82,7 @@ class ProductServices(FileReader):
         product_list = []
         for index, row in self.product_df.iterrows():
             brand_of_product = self.get_brand_by_name(row["brand"])
-            product = Product(
-                id=row["id"], name=row["name"], brand=brand_of_product
-            )
+            product = Product(id=row["id"], name=row["name"], brand=brand_of_product)
             product_list.append(product)
         return product_list
 
@@ -155,111 +151,183 @@ class SalesService(FileReader):
         return None
 
 
-
-class TAService:
+class TAHelper:
     @staticmethod
     def calculate_7_day_rolling_average(group, col_name, sales_name):
-        group[col_name] = group[sales_name].shift(fill_value=0).rolling(window=7, min_periods=1).mean()
+        group[col_name] = (
+            group[sales_name]
+            .shift(fill_value=0)
+            .rolling(window=7, min_periods=1)
+            .mean()
+        )
         return group
+    
+    @staticmethod
+    def calculate_WMAPE(dataframe):
+        df = dataframe.copy()
+        df["APE"] = abs((df["sales_product"] - df["MA7_P"]) / df["sales_product"]) * 100
+        df["WAPE"] = df["APE"] * df["sales_product"]
+        grouped = df.groupby(["product_id", "store_id", "brand_id"])
+
+        result_df = pd.DataFrame()
+        result_df["WAPE"] = grouped["WAPE"].sum()
+        result_df["sales_product"] = grouped["sales_product"].sum()
+        result_df["WMAPE"] = (result_df["WAPE"] / result_df["sales_product"]).fillna(0)
+
+        result_df = result_df.drop(["WAPE", "sales_product"], axis=1)
+        result_df = result_df.sort_values(by="WMAPE", ascending=False)
+        return result_df
+
 
 class OutputService:
     def __init__(self, sales_service):
         self.sales_service = sales_service
+        self.output = sales_service.sales_df.copy()
+        self.ta_helper = TAHelper()
+        self.output["date"] = pd.to_datetime(self.output["date"])
+        
 
     def add_brand_id(self, df):
-        self.output = df.copy()
         self.output["brand_id"] = df["product"].apply(
             lambda product_id: self.sales_service.get_product_by_id(product_id).brand.id
         )
-        
+
     def add_sales_product(self):
-        self.output = self.output.rename(columns={'quantity': 'sales_product'})
+        self.output = self.output.rename(columns={"quantity": "sales_product"})
 
-    def add_MA7_P(self):     
-        self.output['date'] = pd.to_datetime(self.output['date'])
-        grouped = self.output.groupby(['product', 'brand_id', 'store'])
-        self.output = grouped.apply(TAService.calculate_7_day_rolling_average, 'MA7_P', 'sales_product')
+    def calculate_MA7(self, group, col_name, calc_col):
+        grouped = self.output.groupby(group)
+        self.output = grouped.apply(
+            self.ta_helper.calculate_7_day_rolling_average, col_name, calc_col
+        )
         self.output = self.output.reset_index(drop=True)
-        
+
+    def add_MA7_P(self):
+        self.calculate_MA7(
+            group=["product", "brand_id", "store"],
+            col_name="MA7_P",
+            calc_col="sales_product"
+        )
+
     def add_LAG7_P(self):
-        grouped = self.output.groupby(['product', 'brand_id', 'store'])
-        self.output['LAG7_P'] = grouped['sales_product'].shift(periods=7)
+        grouped = self.output.groupby(["product", "brand_id", "store"])
+        self.output["LAG7_P"] = grouped["sales_product"].shift(periods=7)
         self.output = self.output.reset_index(drop=True)
-        
+
     def add_sales_brand(self):
-        grouped = self.output.groupby(['brand_id', 'store', 'date'])
-        result = grouped['sales_product'].sum().reset_index()
-        result = result.rename(columns={'sales_product': 'sales_brand'})
-        self.output = self.output.merge(result, on=['brand_id', 'store', 'date'], how='left')
+        grouped = self.output.groupby(["brand_id", "store", "date"])
+        result = grouped["sales_product"].sum().reset_index()
+        result = result.rename(columns={"sales_product": "sales_brand"})
+        self.output = self.output.merge(
+            result, on=["brand_id", "store", "date"], how="left"
+        )
 
-    def add_MA7_B(self):     
-        self.output['date'] = pd.to_datetime(self.output['date'])
-        grouped = self.output.groupby(['brand_id', 'store'])
-        self.output = grouped.apply(TAService.calculate_7_day_rolling_average, 'MA7_B', 'sales_brand')
+    def add_MA7_B(self):
+        grouped = self.output.groupby(["brand_id", "store"])
+        self.output = grouped.apply(
+            self.ta_helper.calculate_7_day_rolling_average, "MA7_B", "sales_brand"
+        )
         self.output = self.output.reset_index(drop=True)
-        
+
     def add_LAG7_B(self):
-        grouped = self.output.groupby(['brand_id', 'store'])
-        self.output['LAG7_B'] = grouped['sales_brand'].shift(periods=7)
+        grouped = self.output.groupby(["brand_id", "store"])
+        self.output["LAG7_B"] = grouped["sales_brand"].shift(periods=7)
         self.output = self.output.reset_index(drop=True)
-        
+
     def add_sales_store(self):
-        grouped = self.output.groupby(['store', 'date'])
-        result = grouped['sales_product'].sum().reset_index()
-        result = result.rename(columns={'sales_product': 'sales_store'})
-        self.output = self.output.merge(result, on=['store', 'date'], how='left')
+        grouped = self.output.groupby(["store", "date"])
+        result = grouped["sales_product"].sum().reset_index()
+        result = result.rename(columns={"sales_product": "sales_store"})
+        self.output = self.output.merge(result, on=["store", "date"], how="left")
 
-    def add_MA7_S(self):     
-        self.output['date'] = pd.to_datetime(self.output['date'])
-        grouped = self.output.groupby(['product', 'brand_id', 'store'])
-        self.output = grouped.apply(TAService.calculate_7_day_rolling_average, 'MA7_S', 'sales_store')
+    def add_MA7_S(self):
+        grouped = self.output.groupby(["product", "brand_id", "store"])
+        self.output = grouped.apply(
+            self.ta_helper.calculate_7_day_rolling_average, "MA7_S", "sales_store"
+        )
         self.output = self.output.reset_index(drop=True)
-        
+
     def add_LAG7_S(self):
-        grouped = self.output.groupby(['store'])
-        self.output['LAG7_S'] = grouped['sales_store'].shift(periods=7)
+        grouped = self.output.groupby(["store"])
+        self.output["LAG7_S"] = grouped["sales_store"].shift(periods=7)
         self.output = self.output.reset_index(drop=True)
-    
+
     def col_organize(self):
-        self.output = self.output.rename(columns={'product': 'product_id', 
-                                                  'store': 'store_id'})
-        col_order = ['product_id','store_id','brand_id','date','sales_product',
-                     'MA7_P','LAG7_P','sales_brand','MA7_B','LAG7_B',
-                     'sales_store','MA7_S','LAG7_S']
+        self.output = self.output.rename(
+            columns={"product": "product_id", "store": "store_id"}
+        )
+        col_order = [
+            "product_id",
+            "store_id",
+            "brand_id",
+            "date",
+            "sales_product",
+            "MA7_P",
+            "LAG7_P",
+            "sales_brand",
+            "MA7_B",
+            "LAG7_B",
+            "sales_store",
+            "MA7_S",
+            "LAG7_S",
+        ]
         self.output = self.output[col_order]
+
+    def create_WMAPE(self):
+        wmape_df = self.ta_helper.calculate_WMAPE(self.output)
+        return wmape_df
+    
+
+class FeatureOutputService(OutputService):
+    def __init__(self):
+        bs = BrandServices()
+        ps = ProductServices(bs.brand_list)
+        ss = StoreServices()
+        sss = SalesService(ps.product_list, ss.store_list)
+        super().__init__(sss)
+        super().add_brand_id(sss.sales_df)
+        super().add_sales_product()
+        super().add_MA7_P()
+        super().add_LAG7_P()
+        super().add_sales_brand()
+        super().add_MA7_B()
+        super().add_LAG7_B()
+        super().add_sales_store()
+        super().add_MA7_S()
+        super().add_LAG7_S()
+        super().col_organize()
         
-    def calculate_WMAPE(self):
-        df = self.output.copy()
-        df['APE'] = abs((df['sales_product'] - df['MA7_P']) / df['sales_product']) * 100
-        df['WAPE'] = df['APE'] * df['sales_product']
-        grouped = df.groupby(['product_id', 'store_id', 'brand_id'])
+    def get_wmape_df(self, top=Config.TOP):
+        return super().create_WMAPE().head(top)
+        
+        
 
-        result_df = pd.DataFrame()
-        result_df['WAPE'] = grouped['WAPE'].sum()
-        result_df['sales_product'] = grouped['sales_product'].sum()
-        result_df['WMAPE'] = (result_df['WAPE'] / result_df['sales_product']).fillna(0)
-
-        result_df = result_df.drop(['WAPE', 'sales_product'], axis=1)
-        result_df = result_df.sort_values(by='WMAPE', ascending=False)
-        return result_df
 
 if __name__ == "__main__":
-    bs = BrandServices()
-    ps = ProductServices(bs.brand_list)
-    ss = StoreServices()
-    sss = SalesService(ps.product_list, ss.store_list)
-    out = OutputService(sss)
-    out.add_brand_id(sss.sales_df)
-    out.add_sales_product()
-    out.add_MA7_P()
-    out.add_LAG7_P()
-    out.add_sales_brand()
-    out.add_MA7_B()
-    out.add_LAG7_B()
-    out.add_sales_store()
-    out.add_MA7_S()
-    out.add_LAG7_S()
-    out.col_organize()
-    r = out.calculate_WMAPE()
-    print(r.head(10))
-    print(out.output.head(10))
+    import argparse
+    import pandas as pd
+    
+    feature_out = FeatureOutputService()
+    r = feature_out.output
+    
+    parser = argparse.ArgumentParser(description="Filter data based on date range.")
+    parser.add_argument("--min-date", type=str, default=Config.MIN_DATE, help="Start of the date range.")
+    parser.add_argument("--max-date", type=str, default=Config.MAX_DATE, help="End of the date range.")
+    parser.add_argument("--top", type=int, default=Config.TOP, help="Exceed max index.")
+    args = parser.parse_args()
+
+    r['date'] = pd.to_datetime(r['date'])
+    min_date_available = pd.to_datetime(Config.MIN_DATE)
+    max_date_available = pd.to_datetime(Config.MAX_DATE)
+    args.min_date = pd.to_datetime(args.min_date)
+    args.max_date = pd.to_datetime(args.max_date)
+
+    if args.min_date < min_date_available or args.max_date > max_date_available:
+        print(f"Error: Date range must be within {min_date_available} to {max_date_available}.")
+    else:
+        mask = (r['date'] >= args.min_date) & (r['date'] <= args.max_date)
+        filtered_df = r[mask]
+        filtered_df.to_csv('feature.csv', index=False)
+    k = feature_out.get_wmape_df(top=args.top)
+    k.to_csv('mapes.csv')
+    
