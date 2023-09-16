@@ -161,9 +161,13 @@ class TAHelper:
             .mean()
         )
         return group
-    
+
     @staticmethod
     def calculate_WMAPE(dataframe):
+        """_
+        NEED: require a fix issue for calculation,
+        because we dont match the desired example output!!!
+        """
         df = dataframe.copy()
         df["APE"] = abs((df["sales_product"] - df["MA7_P"]) / df["sales_product"]) * 100
         df["WAPE"] = df["APE"] * df["sales_product"]
@@ -173,19 +177,20 @@ class TAHelper:
         result_df["WAPE"] = grouped["WAPE"].sum()
         result_df["sales_product"] = grouped["sales_product"].sum()
         result_df["WMAPE"] = (result_df["WAPE"] / result_df["sales_product"]).fillna(0)
+        result_df.reset_index(inplace=True)
 
         result_df = result_df.drop(["WAPE", "sales_product"], axis=1)
         result_df = result_df.sort_values(by="WMAPE", ascending=False)
+
         return result_df
 
 
-class OutputService:
+class DataPipeline:
     def __init__(self, sales_service):
         self.sales_service = sales_service
         self.output = sales_service.sales_df.copy()
         self.ta_helper = TAHelper()
         self.output["date"] = pd.to_datetime(self.output["date"])
-        
 
     def add_brand_id(self, df):
         self.output["brand_id"] = df["product"].apply(
@@ -202,17 +207,24 @@ class OutputService:
         )
         self.output = self.output.reset_index(drop=True)
 
+    def calculate_LAG7(self, group, col_name, calc_col):
+        grouped = self.output.groupby(group)
+        self.output[col_name] = grouped[calc_col].shift(periods=7)
+        self.output = self.output.reset_index(drop=True)
+
     def add_MA7_P(self):
         self.calculate_MA7(
             group=["product", "brand_id", "store"],
             col_name="MA7_P",
-            calc_col="sales_product"
+            calc_col="sales_product",
         )
 
     def add_LAG7_P(self):
-        grouped = self.output.groupby(["product", "brand_id", "store"])
-        self.output["LAG7_P"] = grouped["sales_product"].shift(periods=7)
-        self.output = self.output.reset_index(drop=True)
+        self.calculate_LAG7(
+            group=["product", "brand_id", "store"],
+            col_name="LAG7_P",
+            calc_col="sales_product",
+        )
 
     def add_sales_brand(self):
         grouped = self.output.groupby(["brand_id", "store", "date"])
@@ -223,16 +235,16 @@ class OutputService:
         )
 
     def add_MA7_B(self):
-        grouped = self.output.groupby(["brand_id", "store"])
-        self.output = grouped.apply(
-            self.ta_helper.calculate_7_day_rolling_average, "MA7_B", "sales_brand"
+        self.calculate_MA7(
+            group=["brand_id", "store"],
+            col_name="MA7_B",
+            calc_col="sales_brand",
         )
-        self.output = self.output.reset_index(drop=True)
 
     def add_LAG7_B(self):
-        grouped = self.output.groupby(["brand_id", "store"])
-        self.output["LAG7_B"] = grouped["sales_brand"].shift(periods=7)
-        self.output = self.output.reset_index(drop=True)
+        self.calculate_LAG7(
+            group=["brand_id", "store"], col_name="LAG7_B", calc_col="sales_brand"
+        )
 
     def add_sales_store(self):
         grouped = self.output.groupby(["store", "date"])
@@ -241,16 +253,14 @@ class OutputService:
         self.output = self.output.merge(result, on=["store", "date"], how="left")
 
     def add_MA7_S(self):
-        grouped = self.output.groupby(["product", "brand_id", "store"])
-        self.output = grouped.apply(
-            self.ta_helper.calculate_7_day_rolling_average, "MA7_S", "sales_store"
+        self.calculate_MA7(
+            group=["product", "brand_id", "store"],
+            col_name="MA7_S",
+            calc_col="sales_tore",
         )
-        self.output = self.output.reset_index(drop=True)
 
     def add_LAG7_S(self):
-        grouped = self.output.groupby(["store"])
-        self.output["LAG7_S"] = grouped["sales_store"].shift(periods=7)
-        self.output = self.output.reset_index(drop=True)
+        self.calculate_LAG7(group=["store"], col_name="LAG7_S", calc_col="sales_store")
 
     def col_organize(self):
         self.output = self.output.rename(
@@ -276,58 +286,75 @@ class OutputService:
     def create_WMAPE(self):
         wmape_df = self.ta_helper.calculate_WMAPE(self.output)
         return wmape_df
-    
 
-class FeatureOutputService(OutputService):
+
+class OutputService:
     def __init__(self):
         bs = BrandServices()
         ps = ProductServices(bs.brand_list)
         ss = StoreServices()
         sss = SalesService(ps.product_list, ss.store_list)
-        super().__init__(sss)
-        super().add_brand_id(sss.sales_df)
-        super().add_sales_product()
-        super().add_MA7_P()
-        super().add_LAG7_P()
-        super().add_sales_brand()
-        super().add_MA7_B()
-        super().add_LAG7_B()
-        super().add_sales_store()
-        super().add_MA7_S()
-        super().add_LAG7_S()
-        super().col_organize()
-        
+        self.pipeline = DataPipeline(sss)
+        self.pipeline.add_brand_id(sss.sales_df)
+        self.pipeline.add_sales_product()
+        self.pipeline.add_MA7_P()
+        self.pipeline.add_LAG7_P()
+        self.pipeline.add_sales_brand()
+        self.pipeline.add_MA7_B()
+        self.pipeline.add_LAG7_B()
+        self.pipeline.add_sales_store()
+        self.pipeline.add_MA7_S()
+        self.pipeline.add_LAG7_S()
+        self.pipeline.col_organize()
+        self.df = self.pipeline.output
+
     def get_wmape_df(self, top=Config.TOP):
-        return super().create_WMAPE().head(top)
-        
-        
+        return self.pipeline.create_WMAPE().head(top)
+
+    def create_args_parser(self):
+        import argparse
+
+        parser = argparse.ArgumentParser(description="Filter data based on date range.")
+        parser.add_argument(
+            "--min-date",
+            type=str,
+            default=Config.MIN_DATE,
+            help="Start of the date range.",
+        )
+        parser.add_argument(
+            "--max-date",
+            type=str,
+            default=Config.MAX_DATE,
+            help="End of the date range.",
+        )
+        parser.add_argument(
+            "--top", type=int, default=Config.TOP, help="Exceed max index."
+        )
+        args = parser.parse_args()
+        return args
+
+    def run(self):
+        args = self.create_args_parser()
+        min_date_available = pd.to_datetime(Config.MIN_DATE)
+        max_date_available = pd.to_datetime(Config.MAX_DATE)
+        args.min_date = pd.to_datetime(args.min_date)
+        args.max_date = pd.to_datetime(args.max_date)
+
+        if args.min_date < min_date_available or args.max_date > max_date_available:
+            print(
+                f"Error: Date range must be within {min_date_available} to {max_date_available}."
+            )
+        else:
+            mask = (self.df["date"] >= args.min_date) & (
+                self.df["date"] <= args.max_date
+            )
+            filtered_df = self.df[mask]
+            filtered_df.to_csv("feature.csv", index=False)
+
+            k = self.get_wmape_df(top=args.top)
+            k.to_csv("mapes.csv", index=False)
 
 
 if __name__ == "__main__":
-    import argparse
-    import pandas as pd
-    
-    feature_out = FeatureOutputService()
-    r = feature_out.output
-    
-    parser = argparse.ArgumentParser(description="Filter data based on date range.")
-    parser.add_argument("--min-date", type=str, default=Config.MIN_DATE, help="Start of the date range.")
-    parser.add_argument("--max-date", type=str, default=Config.MAX_DATE, help="End of the date range.")
-    parser.add_argument("--top", type=int, default=Config.TOP, help="Exceed max index.")
-    args = parser.parse_args()
-
-    r['date'] = pd.to_datetime(r['date'])
-    min_date_available = pd.to_datetime(Config.MIN_DATE)
-    max_date_available = pd.to_datetime(Config.MAX_DATE)
-    args.min_date = pd.to_datetime(args.min_date)
-    args.max_date = pd.to_datetime(args.max_date)
-
-    if args.min_date < min_date_available or args.max_date > max_date_available:
-        print(f"Error: Date range must be within {min_date_available} to {max_date_available}.")
-    else:
-        mask = (r['date'] >= args.min_date) & (r['date'] <= args.max_date)
-        filtered_df = r[mask]
-        filtered_df.to_csv('feature.csv', index=False)
-    k = feature_out.get_wmape_df(top=args.top)
-    k.to_csv('mapes.csv')
-    
+    output_service = OutputService()
+    output_service.run()

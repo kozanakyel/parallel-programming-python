@@ -1,6 +1,6 @@
-from typing import List
 
-def merge(A: List, B: List) -> []:
+
+def merge(A: list, B: list) -> list:
     i = 0 
     j = 0
     k = 0
@@ -30,13 +30,13 @@ def merge(A: List, B: List) -> []:
     
     return merged
 
-def find_median(arr: List):
-    total_length = len(arr)
-    if total_length % 2 == 1:
-        return arr[total_length // 2]
+def find_median(arr: list):
+    l = len(arr)
+    if l % 2 == 1:
+        return arr[l // 2]
     else:
-        mid1 = arr[(total_length // 2) - 1]
-        mid2 = arr[total_length // 2]
+        mid1 = arr[(l // 2) - 1]
+        mid2 = arr[l // 2]
         return (mid1 + mid2) / 2
 
 if __name__ == '__main__':
@@ -48,6 +48,6 @@ if __name__ == '__main__':
     
     concated_arr = merge(input1, input2)
     median_result = find_median(concated_arr)
-    print(f"median: {median_result}")
+    print(f"output: {median_result}")
     
     
