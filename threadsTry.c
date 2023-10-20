@@ -5,7 +5,7 @@
 #define NUMBER_OF_THREADS   10
 
 void *print_hello_world(void *tid){
-    printf("Hello World. Greetings from thread %d\n", tid);
+    printf("Hello World. Greetings from thread: %d\n",tid);
     pthread_exit(NULL);
 }
 
@@ -15,7 +15,7 @@ int main(int argc, char *argv[]){
 
     for (int i = 0; i < NUMBER_OF_THREADS; i++)
     {
-        printf("Main here. creating thread %d\n", i);
+        printf("Main Here. Creating thread %d\n", i);
         status = pthread_create(&threads[i], NULL, print_hello_world, (void *)i);
 
         if(status != 0){
