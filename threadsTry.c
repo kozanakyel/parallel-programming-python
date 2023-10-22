@@ -6,7 +6,9 @@
 
 void *print_hello_world(void *tid){
     printf("Hello World. Greetings from thread: %d\n",tid);
+    // pthread_attr_destroy();
     pthread_exit(NULL);
+
 }
 
 int main(int argc, char *argv[]){
