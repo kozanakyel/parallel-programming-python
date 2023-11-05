@@ -24,7 +24,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Wait for all threads to finish
     for (i = 0; i < NUMBER_OF_THREADS; i++) {
         status = pthread_join(threads[i], NULL);
         if (status != 0) {
@@ -34,7 +33,6 @@ int main(int argc, char *argv[]) {
         printf("Main Here. Joined with thread %d\n", i);
     }
 
-    // Clean up threads (optional)
     for (i = 0; i < NUMBER_OF_THREADS; i++) {
         status = pthread_detach(threads[i]);
         if (status != 0) {

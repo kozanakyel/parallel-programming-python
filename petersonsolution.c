@@ -39,36 +39,28 @@ void leave_region(int process)                              /* process: who is l
 
 void *process_function(void *arg) {
     int process_id = *((int *)arg);
-
-    // Enter critical region
     enter_region(process_id);
-
-    // Critical section (replace this with your actual critical section code)
     printf("Process %d is in the critical section.\n", process_id);
-
-    // Leave critical region
     leave_region(process_id);
-
     pthread_exit(NULL);
 }
+
 
 int main() {
     pthread_t threads[N];
     int thread_ids[N];
 
+
     // Initialize thread IDs
     for (int i = 0; i < N; i++) {
         thread_ids[i] = i;
     }
-
-    // Create threads
     for (int i = 0; i < N; i++) {
         if (pthread_create(&threads[i], NULL, process_function, (void *)&thread_ids[i]) != 0) {
             fprintf(stderr, "Error creating thread %d\n", i);
             return 1;
         }
     }
-
     // Join threads
     for (int i = 0; i < N; i++) {
         if (pthread_join(threads[i], NULL) != 0) {
@@ -76,7 +68,6 @@ int main() {
             return 1;
         }
     }
-
     return 0;
 }
 
