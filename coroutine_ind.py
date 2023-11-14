@@ -1,6 +1,7 @@
 import asyncio
 from asyncio import CancelledError
 from util.delay_functions import delay
+from util.async_timed import async_timed
 
 async def coroutine_add_one(number: int) -> int:
     return number + 1
@@ -139,6 +140,41 @@ async def main():
 
 
 # asyncio.run(main())
+
+# FUTURES IN PYTHON
+
+from asyncio import Future
+
+# my_future = Future()
+
+# print(f'Is my_future done? {my_future.done()}')
+
+# my_future.set_result(42)
+
+# print(f'Is my_future done? {my_future.done()}')
+# print(f'What is the result of my_future? {my_future.result()}')
+
+
+@async_timed()
+async def delay(delay_seconds: int) -> int:
+    print(f'sleeping for {delay_seconds} second(s)')
+    await asyncio.sleep(delay_seconds)
+    print(f'finished sleeping for {delay_seconds} second(s)')
+    return delay_seconds
+
+
+@async_timed()
+async def main():
+    task_one = asyncio.create_task(delay(2))
+    task_two = asyncio.create_task(delay(3))
+
+    await task_one
+    await task_two
+
+
+asyncio.run(main())
+
+
 
 
 
